@@ -1,7 +1,6 @@
 # NBA Machine Learning Project
 
 ### Author: Máté Czimer
-### Last update: 2022.12.21.
 
 ## Motivation
 The so called NBA draft might be one, if not the most crucial moment of the basketball world every year.
