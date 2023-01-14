@@ -79,17 +79,31 @@ class Model:
         self.df_2022 = self.df[self.df.year == 2022]
         self.df = self.df[self.df.year < 2022]
 
-        # rename unnamed column 64 for clearity and drop unknown or dupplicated columns
-        self.df.rename({'Unnamed: 64':'player_position'},inplace=True)
-        self.df = self.df.drop('Unnamed: 65',axis=1)
-        self.df = self.df.drop('pick',axis=1)
-        self.df = self.df.drop('overall',axis=1)
-        self.df = self.df.drop('affiliation',axis=1)
-        self.df = self.df.drop('draft_round',axis=1)
-        self.df = self.df.drop('draft_pick',axis=1)
+        # rename unnamed column 64 for clearity
+        self.df['Unnamed: 64'].rename('player_position',inplace=True)
+
+        # drop unknown, irrelevant (not statistical, such as 'num': jersey number column) or dupplicated columns
+        self.df = self.df.drop('Unnamed: 65',axis=1) # unknown with nan values
+        self.df = self.df.drop('pick',axis=1) # irrelevant, it can be used for more sophisticated prediction tasks
+        self.df = self.df.drop('overall',axis=1) # irrelevant, it can be used for more sophisticated prediction tasks
+        self.df = self.df.drop('affiliation',axis=1) # irrelevant, it can be used for more sophisticated prediction tasks
+        self.df = self.df.drop('draft_round',axis=1) # irrelevant, it can be used for more sophisticated prediction tasks
+        self.df = self.df.drop('draft_pick',axis=1) # irrelevant, it can be used for more sophisticated prediction tasks
+        self.df = self.df.drop('num',axis=1) # irrelevant, not statistical data (jersey number)
+        self.df = self.df.drop('pid',axis=1) # irrelevant, not statistical data (player id in the database)
+        self.df = self.df.drop('type',axis=1) # irrelevant, not statistical data (unique value for all rows)
+
+        # handle mistyped or wrong values
+        self.df.yr.replace('0','None',inplace=True)
+        self.df.yr.replace('57.1','None',inplace=True)
+        self.df.yr.replace('42.9','None',inplace=True)
 
         # handle missing values
         self.df.drafted_flag.fillna(value=0,inplace=True)
+        self.df.yr.fillna(value='None',inplace=True)
+        self.df.player_position.fillna(value='None',inplace=True)
+
+        self.df.fillna(value=0,inplace=True)
 
     def random_model(self, input_value=None):
         '''
