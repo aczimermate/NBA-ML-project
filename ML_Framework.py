@@ -3,19 +3,21 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
 from scipy.stats import bernoulli
 
 
 class Model:
     '''
-    This class contains all attributes and methods for classification model construction on the college basketball and NBA draft data sets, and the evaluation of the model instance. 
+    This class contains all attributes and methods for classification model construction on the college basketball and NBA draft data sets, also the evaluation of the model instance. 
     As default, it uses a random model based on the target feature's distribution to predict the outcomes. 
     The training of the classification model on the training set followed by the prediction of the y vector based wether on the test feature space or the manually given input data set. 
     ## Parameters:
      - user_defined_model -> the framework handles the following values for this input parameter:
         1. None -> if there is no input value then the framework automatically choses the random model for the classification task
         2. 'lr' -> if the input value is 'lr', then the framework classifies the data by using logistic regression 
+        3. 'dt' -> if the input value is 'dt', then the framework classifies the data by using decision tree classifier
     ## Methods:
      - transform: cleaning and transformation of the data set.
      - random_model: construction method of a random model based on the empirical distribution of the target feature vector.
@@ -23,7 +25,7 @@ class Model:
      - fit: fit method of the classification model on the training data set.
      - fit: fit method of the classification model on the training data set.
      - evaluate: shows the results of the prediction on the test data set/input value(s) compared to the baseline model outcome.
-     - run_framework: then runs all methods mentioned above
+     - run_framework: runs all methods mentioned above
     '''
 
     def __init__(self, user_defined_model=None, year=None):
@@ -68,8 +70,8 @@ class Model:
             self.user_defined_model = None
         elif user_defined_model == 'lr':
             self.user_defined_model = LR()
-        # elif user_defined_model == 'dt':
-        #     self.user_defined_model = 'decision_tree'
+        elif user_defined_model == 'dt':
+            self.user_defined_model = DecisionTreeClassifier()
 
         # year selection
         self.year = year
@@ -128,6 +130,12 @@ class Model:
 
         # one hot encode categorical column: yr
         self.df = pd.get_dummies(self.df, columns=['yr'])
+
+        # reorder columns to have drafted_flag as the last column of the dataframe
+        col_list = self.df.columns.tolist()
+        col_list.pop(-6)  # 'drafted_flag'
+        col_list.append('drafted_flag')
+        self.df = self.df[col_list]
 
         # leave only numeric data and fill all remaining columns with zeros
         self.df = self.df.select_dtypes(exclude='object')
