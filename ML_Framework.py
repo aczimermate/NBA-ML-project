@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import StratifiedKFold
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
 from sklearn import preprocessing
 from scipy.stats import bernoulli
@@ -20,7 +20,11 @@ class Model:
         1. None -> if there is no input value then the framework automatically choses the random model for the classification task
         2. 'lr' -> if the input value is 'lr', then the framework classifies the data by using logistic regression 
         3. 'dt' -> if the input value is 'dt', then the framework classifies the data by using decision tree classifier
-    ## Methods:
+        4. 'rf' -> if the input value is 'rf', then the framework classifies the data by using random forest classifier
+     - logreg_params -> hyperparameter input for random forest classification: [penalty, solver]
+     - dectree_params -> hyperparameter input for random forest classification: [splitter, max_depth, criterion]
+     - randfor_params -> hyperparameter input for random forest classification: [n_estimators, max_depth, criterion]
+         ## Methods:
      - transform: cleaning and transformation of the data set.
      - random_model: construction method of a random model based on the empirical distribution of the target feature vector.
      - split_data: train/test split of the data set.
@@ -30,7 +34,14 @@ class Model:
      - run_framework: runs all methods mentioned above
     '''
 
-    def __init__(self, user_defined_model=None, year=None):
+    def __init__(
+        self, 
+        user_defined_model=None, 
+        logreg_params=['l2','lbfgs'], 
+        dectree_params=['best',None,'gini'], 
+        randfor_params=[100,None,'gini'], 
+        year=None
+        ):
 
         # read college player statistics from 2009 to 2022
         # the data can be found in two different csv files, one contains stats from 2009 to 2021
@@ -70,10 +81,26 @@ class Model:
         # model selection
         if user_defined_model is None:
             self.user_defined_model = None
+
         elif user_defined_model == 'lr':
-            self.user_defined_model = LR()
+            self.user_defined_model = LR(
+                penalty=logreg_params[0],
+                solver=logreg_params[1],
+                random_state=1)
+
         elif user_defined_model == 'dt':
-            self.user_defined_model = DecisionTreeClassifier()
+            self.user_defined_model = DecisionTreeClassifier(
+                splitter=dectree_params[0],
+                max_depth=dectree_params[1],
+                criterion=dectree_params[2],
+                random_state=1)
+
+        elif user_defined_model == 'rf':
+            self.user_defined_model = RandomForestClassifier(
+                n_estimators=randfor_params[0],
+                max_depth=randfor_params[1],
+                criterion=randfor_params[2],
+                random_state=1)
 
         # year selection
         self.year = year
@@ -180,13 +207,15 @@ class Model:
 
         return np.array(self.rand_model)
 
-    def split_data(self):
+    def split_data(self,test_size=.2):
         '''
-        Split the data into training a test sets using the stratified K-Fold method.
+        Split the data into training and test sets.
+        ## Parameters:
+         - test_size -> train/test ratio [0,1]; default = 0.2
         '''
         # Split to training and test sets
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-            self.X, self.y, test_size=.2)
+            self.X, self.y, test_size=test_size)
 
     def fit(self):
         '''
@@ -257,17 +286,14 @@ class Model:
         self.transform()
         self.split_data(test_size=test_size)
 
+        # fit the model on the training data
+        self.fit()
+
         # check the existance of the input vector
         if input_value is None:
             predictors = self.X_test
         else:
             predictors = np.array([input_value])
-
-        # construct random model for default usage
-        self.random_model(input_value=predictors)
-
-        # fit the model on the training data
-        self.fit()
 
         # predict the target vector values and evaluate the prediction
         if self.user_defined_model is None:
