@@ -4,7 +4,9 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
+from sklearn import preprocessing
 from scipy.stats import bernoulli
 
 
@@ -141,6 +143,14 @@ class Model:
         self.df = self.df.select_dtypes(exclude='object')
         self.df.fillna(value=0, inplace=True)
 
+        # separate predictors from the target feature
+        self.X = self.df.iloc[:, :-1]
+        self.y = self.df.drafted_flag
+
+        # apply feature scaling for input features using MinMaxScaler
+        scaler = preprocessing.MinMaxScaler()
+        self.X_scaled = scaler.fit_transform(self.X)
+
     def random_model(self, input_value=None):
         '''
         Random model implementation.
@@ -170,19 +180,13 @@ class Model:
 
         return np.array(self.rand_model)
 
-    def split_data(self, test_size=.2):
+    def split_data(self):
         '''
-        Split the data into training a test sets, then return the splitted data set.
-        ## Parameters:
-         - test_size -> train/test ratio [0,1]; default = 0.2
+        Split the data into training a test sets using the stratified K-Fold method.
         '''
-        # separate predictors from the target feature
-        X = self.df.iloc[:, :-1]
-        y = self.df.drafted_flag
-
         # Split to training and test sets
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-            X, y, test_size=test_size)
+            self.X, self.y, test_size=.2)
 
     def fit(self):
         '''
