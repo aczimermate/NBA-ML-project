@@ -4,10 +4,12 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
 from sklearn import preprocessing
 from scipy.stats import bernoulli
+from statistics import mean, stdev
 
 class prep_data:
     '''
@@ -148,7 +150,7 @@ class prep_data:
 
         # apply feature scaling for input features using MinMaxScaler
         scaler = preprocessing.MinMaxScaler()
-        self.X_scaled = scaler.fit_transform(self.X)
+        self.X = scaler.fit_transform(self.X)
 
 class random_model:
         '''
@@ -237,5 +239,101 @@ class decision_tree:
     def predict(self,X):
         self.model.predict(X)
 
+class random_forest:
+    '''
+    Random Forest model class implementation using sklearn's RandomForestClassifier library.
+    '''
+    def __init__(self, n_estimators=100, criterion='gini', splitter='best', max_depth=None, min_samples_split=2, 
+                 min_samples_leaf=1, min_weight_fraction_leaf=0.0, bootstrap=True, oob_score=False, max_features='sqrt', 
+                 random_state=None, verbose=0, warm_start=False, max_leaf_nodes=None, min_impurity_decrease=0.0, class_weight=None, 
+                 ccp_alpha=0.0, max_samples=None):
+        
+        self.model = RandomForestClassifier(
+            n_estimators=n_estimators,
+            criterion=criterion, 
+            max_depth=max_depth, 
+            min_samples_split=min_samples_split, 
+            min_samples_leaf=min_samples_leaf, 
+            min_weight_fraction_leaf=min_weight_fraction_leaf, 
+            max_features=max_features, 
+            random_state=random_state, 
+            max_leaf_nodes=max_leaf_nodes, 
+            min_impurity_decrease=min_impurity_decrease, 
+            bootstrap=bootstrap,
+            oob_score=oob_score,
+            verbose=verbose,
+            warm_start=warm_start,
+            class_weight=class_weight, 
+            ccp_alpha=ccp_alpha,
+            max_samples=max_samples
+            )
 
+    def fit(self,X,y):
+        self.model.fit(X,y)
 
+    def predict(self,X):
+        self.model.predict(X)
+
+class evaluation:
+    '''
+    Class of evaluation functions.
+    '''
+    def skf_eval_precision(self, model, number_of_splits=10, random_state=1):
+        '''
+        Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
+        '''
+        # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
+        import warnings
+        warnings.filterwarnings('ignore')
+
+        skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+        eval_score = []
+
+        for train_index, test_index in skf.split(model.X, model.y):
+            # split X and y
+            X_train, X_test = model.X[train_index], model.X[test_index]
+            y_train, y_test = model.y[train_index], model.y[test_index]
+            
+            # fit the model
+            model.fit(X_train,y_train)
+
+            # prediction
+            y_pred = model.predict()
+
+            # evaluate the model's performance
+            cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
+            cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+            eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
+
+        return(eval_score)
+
+    def skf_eval_recall(self, model, number_of_splits=10, random_state=1):
+        '''
+        Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
+        '''
+        # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
+        import warnings
+        warnings.filterwarnings('ignore')
+
+        skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+        eval_score = []
+
+        for train_index, test_index in skf.split(model.X, model.y):
+            # split X and y
+            X_train, X_test = model.X[train_index], model.X[test_index]
+            y_train, y_test = model.y[train_index], model.y[test_index]
+            
+            # fit the model
+            model.fit(X_train,y_train)
+
+            # prediction
+            y_pred = model.predict()
+
+            # evaluate the model's performance
+            cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
+            cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+            eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
+
+        return(eval_score)
