@@ -11,7 +11,7 @@ from sklearn import preprocessing
 from scipy.stats import bernoulli
 from statistics import mean, stdev
 
-class prep_data:
+class NBA_data:
     '''
     Preprocess the data and prepare it for the ML workflow usage.
     '''
@@ -20,6 +20,7 @@ class prep_data:
         Create data set instance by calling the call the ETL method to load, 
         convert and store the data from the sources in a standard form.
         '''
+        self.year=year
         self.ETL()
 
     def ETL(self):
@@ -28,10 +29,10 @@ class prep_data:
         This method prepares the data after loading it from the source files 
         and converting it to a standard form which can be used for further analysis.
         '''
-        self.get_data()
+        self.load_data()
         self.transform()
 
-    def get_data(self, year=None):
+    def load_data(self, year=None):
         '''
         Read college player statistics from 2009 to 2022.
         The data can be found in two different csv files, one contains stats from 2009 to 2021
@@ -156,27 +157,34 @@ class random_model:
         '''
         Random model class implementation.
         '''
-        def __init__(self,X,y):
+        def __init__(self,X=NBA_data().X, y=NBA_data().y):
             '''
-            Random model instance
+            Random model instance.
 
             ## Parameters:
             - data -> for future prediction, 
             the input data's X feature space can be given to the random model manually instead of the X test set.
             '''
             # empirical distribution of the target feature
-            self.X = X
+            self.X = pd.DataFrame(X)
             self.y = y
             self.record_count = self.X.count()
             self.target = self.y[y==1].count()
             self.bernoulli_dist = bernoulli(self.y).rvs(len(self.X))
 
             # random model with Bernoulli distribution
-            self.rand_model = pd.DataFrame(data=[self.bernoulli_dist])
-            self.rand_model = self.rand_model.transpose()
-            self.rand_model = pd.DataFrame(data=self.rand_model)
-            self.rand_model.columns = ['y_pred']
-            self.rand_model = np.array(self.rand_model)
+            self.y_pred = pd.DataFrame(data=[self.bernoulli_dist])
+            self.y_pred = self.y_pred.transpose()
+            self.y_pred = pd.DataFrame(data=self.y_pred)
+            self.y_pred.columns = ['y_pred']
+            self.y_pred = np.array(self.y_pred)
+
+        def fit(self,X=None,y=None):
+            pass
+
+        def predict(self,X=None):
+            return self.y_pred
+
 
 class logistic_regression:
     '''
@@ -278,7 +286,7 @@ class evaluation:
     '''
     Class of evaluation functions.
     '''
-    def skf_eval_precision(self, model, number_of_splits=10, random_state=1):
+    def skf_eval_precision(self, X=NBA_data().X, y=NBA_data().y, model=random_model(), number_of_splits=10, random_state=1):
         '''
         Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
         '''
@@ -289,10 +297,10 @@ class evaluation:
         skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
         eval_score = []
 
-        for train_index, test_index in skf.split(model.X, model.y):
+        for train_index, test_index in skf.split(X, y):
             # split X and y
-            X_train, X_test = model.X[train_index], model.X[test_index]
-            y_train, y_test = model.y[train_index], model.y[test_index]
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
             
             # fit the model
             model.fit(X_train,y_train)
@@ -301,14 +309,14 @@ class evaluation:
             y_pred = model.predict()
 
             # evaluate the model's performance
-            cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
+            # cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
             cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
 
             eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
 
         return(eval_score)
 
-    def skf_eval_recall(self, model, number_of_splits=10, random_state=1):
+    def skf_eval_recall(self, X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
         '''
         Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
         '''
@@ -319,10 +327,10 @@ class evaluation:
         skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
         eval_score = []
 
-        for train_index, test_index in skf.split(model.X, model.y):
+        for train_index, test_index in skf.split(X, y):
             # split X and y
-            X_train, X_test = model.X[train_index], model.X[test_index]
-            y_train, y_test = model.y[train_index], model.y[test_index]
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
             
             # fit the model
             model.fit(X_train,y_train)
