@@ -179,12 +179,11 @@ class random_model:
             self.y_pred.columns = ['y_pred']
             self.y_pred = np.array(self.y_pred)
 
-        def fit(self,X=None,y=None):
-            pass
+        def train(self,X=None,y=None):
+            return self
 
-        def predict(self,X=None):
+        def pred(self,X=None):
             return self.y_pred
-
 
 class logistic_regression:
     '''
@@ -212,11 +211,12 @@ class logistic_regression:
             l1_ratio=l1_ratio
             )
 
-    def fit(self,X,y):
+    def train(self,X,y):
         self.model.fit(X,y)
+        return self
 
-    def predict(self,X):
-        self.model.predict(X)
+    def pred(self,X):
+        return self.model.predict(X)
 
 class decision_tree:
     '''
@@ -241,11 +241,12 @@ class decision_tree:
             ccp_alpha=ccp_alpha
             )
 
-    def fit(self,X,y):
+    def train(self,X,y):
         self.model.fit(X,y)
+        return self
 
-    def predict(self,X):
-        self.model.predict(X)
+    def pred(self,X):
+        return self.model.predict(X)
 
 class random_forest:
     '''
@@ -276,72 +277,46 @@ class random_forest:
             max_samples=max_samples
             )
 
-    def fit(self,X,y):
+    def train(self,X,y):
         self.model.fit(X,y)
+        return self
 
-    def predict(self,X):
-        self.model.predict(X)
+    def pred(self,X):
+        return self.model.predict(X)
 
-class evaluation:
+def skf_eval_precision(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
     '''
-    Class of evaluation functions.
+    Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
     '''
-    def skf_eval_precision(self, X=NBA_data().X, y=NBA_data().y, model=random_model(), number_of_splits=10, random_state=1):
-        '''
-        Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
-        '''
-        # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
-        import warnings
-        warnings.filterwarnings('ignore')
+    # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
+    import warnings
+    warnings.filterwarnings('ignore')
 
-        skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-        eval_score = []
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    eval_score = []
 
-        for train_index, test_index in skf.split(X, y):
-            # split X and y
-            X_train, X_test = X[train_index], X[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            
-            # fit the model
-            model.fit(X_train,y_train)
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
 
-            # prediction
-            y_pred = model.predict()
+        # prediction
+        y_pred = model.pred(X_test)
 
-            # evaluate the model's performance
-            # cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
-            cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+        # evaluate the model's performance
+        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
 
-            eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
+        eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
+        # eval_score.append(y_pred)
 
-        return(eval_score)
+    return(eval_score)
 
-    def skf_eval_recall(self, X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
-        '''
-        Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
-        '''
-        # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
-        import warnings
-        warnings.filterwarnings('ignore')
-
-        skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-        eval_score = []
-
-        for train_index, test_index in skf.split(X, y):
-            # split X and y
-            X_train, X_test = X[train_index], X[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            
-            # fit the model
-            model.fit(X_train,y_train)
-
-            # prediction
-            y_pred = model.predict()
-
-            # evaluate the model's performance
-            cm = confusion_matrix(y_pred=y_pred, y_true=y_test)
-            cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-
-            eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
-
-        return(eval_score)
+def skf_eval_recall(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
+    '''
+    Stratified K-Fold Cross-Validitation evaluation focusing on the recall values.
+    '''
+    pass
