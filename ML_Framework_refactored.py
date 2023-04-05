@@ -1,6 +1,7 @@
 # necessary libraries for the framework
 import pandas as pd
 import numpy as np
+import  matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
 from sklearn.tree import DecisionTreeClassifier
@@ -284,9 +285,142 @@ class random_forest:
     def pred(self,X):
         return self.model.predict(X)
 
+
+'''
+The following functions calculate evaluation measures for 
+the trained models using Stratified K-Fold Cross-Validation technique.
+'''
+
+# for the evaluation of the models' performance it is necessary to 
+# ignore cases where the model was unable to predict the target feature at all
+import warnings
+warnings.filterwarnings('ignore')
+
+def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
+    '''
+    Stratified K-Fold Cross-Validitation evaluation.
+    '''
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    conf_matrix = []
+    precision = []
+    accuracy = []
+    recall = []
+    f1_score = []
+
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
+
+        # prediction
+        y_pred = model.pred(X_test)
+
+        # evaluate the model's performance
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+        # confusion matrices
+        conf_matrix.append(confusion_matrix(y_true=y_test,y_pred=y_pred))
+        
+        # precisions for drafted_flag = 1 predictions
+        precision.append(cr.iloc[1,1])
+
+        # accuracies
+        accuracy.append(cr.iloc[2,1])
+
+        # recall values
+        recall.append(cr.iloc[2,2])
+        
+        # F1-scores
+        f1_score.append(cr.iloc[2,3])
+
+    return(conf_matrix,precision,accuracy,recall,f1_score)
+
+def skf_eval_conf_matrix(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
+    '''
+    Stratified K-Fold Cross-Validitation evaluation function returning the confusion matrices for all splits.
+    '''
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    eval_score = []
+
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
+
+        # prediction
+        y_pred = model.pred(X_test)
+
+        # evaluate the model's performance
+        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+        # precision for drafted_flag = 1 predictions
+        eval_score.append(cr.iloc[1,1])
+        
+    return(eval_score)
+
 def skf_eval_precision(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
     '''
-    Stratified K-Fold Cross-Validitation evaluation focusing on the precision values.
+    Stratified K-Fold Cross-Validitation evaluation function returning the precision values for all splits.
+    '''
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    eval_score = []
+
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
+
+        # prediction
+        y_pred = model.pred(X_test)
+
+        # evaluate the model's performance
+        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+        # precision for drafted_flag = 1 predictions
+        eval_score.append(cr.iloc[1,1])
+        
+    return(eval_score)
+
+def skf_eval_accuracy(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
+    '''
+    Stratified K-Fold Cross-Validitation evaluation function returning the accuracy values for all splits.
+    '''
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    eval_score = []
+
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
+
+        # prediction
+        y_pred = model.pred(X_test)
+
+        # evaluate the model's performance
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+        # accuracy
+        eval_score.append(cr.iloc[2,1])
+
+    return(eval_score)
+
+def skf_eval_recall(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
+    '''
+    Stratified K-Fold Cross-Validitation evaluation function returning the recall values for all splits.
     '''
     # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
     import warnings
@@ -307,16 +441,97 @@ def skf_eval_precision(X=NBA_data().X, y=NBA_data().y, model=random_model, numbe
         y_pred = model.pred(X_test)
 
         # evaluate the model's performance
-        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
         cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-
-        eval_score.append(cr.iloc[1,1]) # precision for drafted_flag = 1 predictions
-        # eval_score.append(y_pred)
+        
+        # recall
+        eval_score.append(cr.iloc[2,2])
 
     return(eval_score)
 
-def skf_eval_recall(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
+def skf_eval_f1_score(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
     '''
-    Stratified K-Fold Cross-Validitation evaluation focusing on the recall values.
+    Stratified K-Fold Cross-Validitation evaluation function returning the F1-score values for all splits.
     '''
-    pass
+    # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
+    import warnings
+    warnings.filterwarnings('ignore')
+
+    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
+    eval_score = []
+
+    for train_index, test_index in skf.split(X, y):
+        # split X and y
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        
+        # fit the model
+        model.train(X_train,y_train)
+
+        # prediction
+        y_pred = model.pred(X_test)
+
+        # evaluate the model's performance
+        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+        
+        # f1-score
+        eval_score.append(cr.iloc[2,3])
+
+    return(eval_score)
+
+def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors = ['#0194fe', '#d8cabf','#b9d090', '#fb9329']):
+    '''
+    Create and show boxplot for every evaluation score arrays (precision, accuracy, recall and F1-score) 
+    with the given height and width and color palette.
+    '''
+    # setup the figure
+    fig = plt.figure(figsize =(fig_height, fig_width))
+    ax = fig.add_subplot(111)
+
+    # Creating axes instance
+    bp = ax.boxplot(eval_data, patch_artist = True, notch ='True', vert = 0)
+
+    # colors for the plots
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+
+    # changing color and linewidth of whiskers
+    for whisker in bp['whiskers']:
+        whisker.set(color ='#8B008B', linewidth = 1.5, linestyle =":")
+
+    # changing color and linewidth of caps
+    for cap in bp['caps']:
+        cap.set(color ='#8B008B', linewidth = 2)
+
+    # changing color and linewidth of medians
+    for median in bp['medians']:
+        median.set(color ='red', linewidth = 3)
+
+    # changing style of fliers
+    for flier in bp['fliers']:
+        flier.set(marker ='D', color ='#e7298a', alpha = 0.5)
+        
+    # x-axis labels
+    ax.set_yticklabels(['Precision', 'Accuracy', 'Recall', 'F1-score'])
+    # ax.set_xticklabels([np.arange(0, 1, .2)])
+
+    # Add title
+    plt.title("Evaluation box plots")
+
+    # Remove top axes and right axes ticks
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+
+    # Add grid to the plot
+#    ax.grid(linestyle='-', linewidth=.5)
+    
+    # Major ticks every 0.20, minor ticks every 5
+    major_ticks = np.arange(0, 1.1, .1)
+    ax.set_xticks(major_ticks)
+#    ax.set_yticks(major_ticks)
+#    ax.set_yticks(minor_ticks, minor=True)
+
+    # And a corresponding grid
+    ax.grid(which='both',axis='both')
+    
+    # show plot
+    plt.show()
