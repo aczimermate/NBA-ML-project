@@ -6,11 +6,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression as LR
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
+from xgboost import XGBClassifier
+from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay, accuracy_score
 from sklearn import preprocessing
 from scipy.stats import bernoulli
 from statistics import mean, stdev
+
+# Classes of machine learning models and data loading / preprocessing step applications.
 
 class NBA_data:
     '''
@@ -154,6 +157,144 @@ class NBA_data:
         scaler = preprocessing.MinMaxScaler()
         self.X = scaler.fit_transform(self.X)
 
+class NBA_data_ext:
+    '''
+    Preprocess the data and prepare it for the ML workflow usage.
+    '''
+    def __init__(self, year=None):
+        '''
+        Create data set instance by calling the call the ETL method to load, 
+        convert and store the data from the sources in a standard form.
+        '''
+        self.year=year
+        self.ETL()
+
+    def ETL(self):
+        '''
+        Extract, Transform and Load method.
+        This method prepares the data after loading it from the source files 
+        and converting it to a standard form which can be used for further analysis.
+        '''
+        self.load_data()
+        self.transform()
+
+    def load_data(self, year=None):
+        '''
+        Read college player statistics from 2009 to 2022.
+        The data can be found in two different csv files, one contains stats from 2009 to 2021
+        while the other one contains the latest statistics (2022).
+
+        Read the other data source that contains draft picks from the nba draft 
+        for each year from 2009 to 2021.
+
+        After reading all sources, this method also merges them into one data set 
+        and creates a df (pandas DataFrame) attribute for the class instance.
+        '''
+        college2009_2021 = pd.read_csv(
+            'Data\CollegeBasketballPlayers2009-2021.csv', low_memory=False)
+
+        college2022 = pd.read_csv(
+            'Data\CollegeBasketballPlayers2022.csv', low_memory=False)
+
+        draft = pd.read_excel('Data\DraftedPlayers2009-2021.xlsx')
+
+        # first of all, lets concatenate the college statistical dataframes
+        college = pd.concat([college2009_2021, college2022])
+
+        # since the draft data set has merged cells in the table header the first row must be dropped
+        draft.drop(0, axis=0, inplace=True)
+
+        # rename the ROUND.1 column to PICK, and modify the PLAYER to player_name
+        # so it can be act as a key during the join with the college data set
+        draft.rename(
+            columns={
+                "PLAYER": "player_name",
+                "TEAM": "drafted_by",
+                "YEAR": "year",
+                "ROUND" : "draft_round", 
+                "ROUND.1" : "pick_no",
+                "OVERALL" : "draft_pick"},
+            inplace=True)
+
+        # also lower all column names
+        draft.columns = draft.columns.str.lower()
+
+        # join (merge) the college set with the draft data to identify those players who have been drafted after playing in college
+        self.df = pd.merge(college, draft, how='outer',
+                           on=['player_name', 'year'])
+
+        # year selection
+        if year is not None: 
+            self.year = year
+
+    def transform(self):
+        '''
+        Clean and transform the df attribute of the class instance.
+        '''
+        # create a new column to identify the drafted players
+        self.df['drafted_flag'] = (~self.df.draft_pick.isnull())*1
+
+        # since the draft data does not contain information about 2022
+        # rows for 2022 are removed from the 'df' data set and saved into a new dataframe
+        # self.df_2022 = self.df[self.df.year == 2022]
+
+        # during model creation, it is also possible to chose a specific year to filter the data set and use only yearly data
+        if self.year is None:
+            self.df = self.df[self.df.year < 2022]
+        else:
+            self.df = self.df[self.df.year == self.year]
+
+        # rename unnamed column 64 for clearity
+        self.df.rename(
+            columns={'Unnamed: 64': 'player_position'}, inplace=True
+        )
+
+        # drop unknown, irrelevant (not statistical, such as 'num': jersey number column) or dupplicate columns
+        self.df = self.df.drop('Unnamed: 65', axis=1)
+        # irrelevant, not statistical data (jersey number)
+        self.df = self.df.drop('num', axis=1)
+        # irrelevant, not statistical data (player id in the database)
+        self.df = self.df.drop('pid', axis=1)
+        # irrelevant, not statistical data (unique value for all rows)
+        self.df = self.df.drop('type', axis=1)
+        # irrelevant, the information is included in the draft_pick column
+        self.df = self.df.drop('pick_no', axis=1)
+        # irrelevant, the information is included in the draft_pick column
+        self.df = self.df.drop('pick', axis=1)
+
+        # handle mistyped or wrong values
+        self.df.yr.replace('0', 'None', inplace=True)
+        self.df.yr.replace('57.1', 'None', inplace=True)
+        self.df.yr.replace('42.9', 'None', inplace=True)
+
+        # handle missing values
+        self.df.drafted_flag.fillna(value=0, inplace=True)
+        self.df.yr.fillna(value='None', inplace=True)
+        self.df.player_position.fillna(value='None', inplace=True)
+        self.df.draft_pick.fillna(value=0, inplace=True)
+        self.df.draft_round.fillna(value=0, inplace=True)
+
+        # one hot encode categorical column: yr
+        self.df = pd.get_dummies(self.df, columns=['yr'])
+
+        # reorder columns to have drafted_flag as the last column of the dataframe
+        col_list = self.df.columns.tolist()
+        col_list.pop(-7)  # 'draft_pick'
+        col_list.append('draft_pick')
+        self.df = self.df[col_list]
+
+        # leave only numeric data and fill all remaining columns with zeros
+        self.df = self.df.select_dtypes(exclude='object')
+        self.df.fillna(value=0, inplace=True)
+
+        # separate predictors from the target feature
+        self.X = self.df.iloc[:, :-1]
+        self.y = np.array(self.df.iloc[:, -1])
+
+        # apply feature scaling for input features using MinMaxScaler
+        scaler = preprocessing.StandardScaler()
+        self.X = scaler.fit_transform(self.X)
+
 class random_model:
         '''
         Random model class implementation.
@@ -170,20 +311,28 @@ class random_model:
             self.X = pd.DataFrame(X)
             self.y = y
             self.record_count = self.X.count()
-            self.target = self.y[y==1].count()
-            self.bernoulli_dist = bernoulli(self.y).rvs(len(self.X))
 
-            # random model with Bernoulli distribution
-            self.y_pred = pd.DataFrame(data=[self.bernoulli_dist])
-            self.y_pred = self.y_pred.transpose()
-            self.y_pred = pd.DataFrame(data=self.y_pred)
-            self.y_pred.columns = ['y_pred']
-            self.y_pred = np.array(self.y_pred)
+            # in case our goal is to predict drafted players:
+            if max(self.y) == 1:
+                self.target = self.y[y==1].count()
+                self.bernoulli_dist = bernoulli(self.y).rvs(len(self.X))
+                 
+                 # random model with Bernoulli distribution
+                self.y_pred = pd.DataFrame(data=[self.bernoulli_dist])
+                self.y_pred = self.y_pred.transpose()
+                self.y_pred = pd.DataFrame(data=self.y_pred)
+                self.y_pred.columns = ['y_pred']
+                self.y_pred = np.array(self.y_pred)
 
-        def train(self,X=None,y=None):
+            # in case our goal is to predict pick numbers:
+            else:
+                self.target = self.y
+                self.y_pred = np.random.randint(0,61,len(self.y))
+
+        def fit(self,X=None,y=None):
             return self
 
-        def pred(self,X=None):
+        def predict(self,X=None):
             return self.y_pred
 
 class logistic_regression:
@@ -212,11 +361,11 @@ class logistic_regression:
             l1_ratio=l1_ratio
             )
 
-    def train(self,X,y):
+    def fit(self,X,y):
         self.model.fit(X,y)
         return self
 
-    def pred(self,X):
+    def predict(self,X):
         return self.model.predict(X)
 
 class decision_tree:
@@ -242,19 +391,19 @@ class decision_tree:
             ccp_alpha=ccp_alpha
             )
 
-    def train(self,X,y):
+    def fit(self,X,y):
         self.model.fit(X,y)
         return self
 
-    def pred(self,X):
+    def predict(self,X):
         return self.model.predict(X)
 
 class random_forest:
     '''
     Random Forest model class implementation using sklearn's RandomForestClassifier library.
     '''
-    def __init__(self, n_estimators=100, criterion='gini', splitter='best', max_depth=None, min_samples_split=2, 
-                 min_samples_leaf=1, min_weight_fraction_leaf=0.0, bootstrap=True, oob_score=False, max_features='sqrt', 
+    def __init__(self, n_estimators=100, criterion=['gini'], splitter='best', max_depth=None, min_samples_split=2, 
+                 min_samples_leaf=1, min_weight_fraction_leaf=0.0, bootstrap=True, oob_score=False, max_features=['sqrt'], 
                  random_state=None, verbose=0, warm_start=False, max_leaf_nodes=None, min_impurity_decrease=0.0, class_weight=None, 
                  ccp_alpha=0.0, max_samples=None):
         
@@ -278,34 +427,76 @@ class random_forest:
             max_samples=max_samples
             )
 
-    def train(self,X,y):
+    def fit(self,X,y):
         self.model.fit(X,y)
         return self
 
-    def pred(self,X):
+    def predict(self,X):
         return self.model.predict(X)
 
+class xgboost:
+    '''
+    XGBoost model class implementation using xgboost's XGBClassifier library.
+    '''
+    def __init__(self, base_score=0.5, colsample_bylevel=1, colsample_bytree=1, 
+                 gamma=0, learning_rate=0.1, max_delta_step=0, max_depth=10,
+                 min_child_weight=1, missing=None, n_estimators=100, nthread=-1,
+                 objective='binary:logistic', reg_alpha=0, reg_lambda=1,
+                 scale_pos_weight=1, seed=0, silent=True, subsample=1):
 
-'''
-The following functions calculate evaluation measures for 
-the trained models using Stratified K-Fold Cross-Validation technique.
-'''
+        self.model = XGBClassifier(
+            base_score=base_score,
+            colsample_bylevel=colsample_bylevel, 
+            colsample_bytree=colsample_bytree, 
+            gamma=gamma, 
+            learning_rate=learning_rate, 
+            max_delta_step=max_delta_step, 
+            max_depth=max_depth, 
+            min_child_weight=min_child_weight, 
+            missing=missing, 
+            n_estimators=n_estimators, 
+            nthread=nthread,
+            objective=objective,
+            reg_alpha=reg_alpha,
+            reg_lambda=reg_lambda,
+            scale_pos_weight=scale_pos_weight, 
+            seed=seed,
+            silent=silent,
+            subsample=subsample
+            )
 
-# for the evaluation of the models' performance it is necessary to 
-# ignore cases where the model was unable to predict the target feature at all
-import warnings
-warnings.filterwarnings('ignore')
+    def fit(self,X,y):
+        self.model.fit(X,y)
+        return self
+
+    def predict(self,X):
+        return self.model.predict(X)
+
+# Functions implemented for evaluation, visualization and hyperparameter tuning.
+
+def warnings_off():
+    '''
+    The following functions calculate evaluation measures for 
+    the trained models using Stratified K-Fold Cross-Validation technique.
+    '''
+
+    # for the evaluation of the models' performance it is necessary to 
+    # ignore cases where the model was unable to predict the target feature at all
+    import warnings
+    warnings.filterwarnings('ignore')
 
 def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
     '''
     Stratified K-Fold Cross-Validitation evaluation.
     '''
+    warnings_off()
     skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
     conf_matrix = []
     precision = []
     accuracy = []
     recall = []
     f1_score = []
+    # class_rep = []
 
     for train_index, test_index in skf.split(X, y):
         # split X and y
@@ -313,10 +504,10 @@ def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_
         y_train, y_test = y[train_index], y[test_index]
         
         # fit the model
-        model.train(X_train,y_train)
+        model.fit(X_train,y_train)
 
         # prediction
-        y_pred = model.pred(X_test)
+        y_pred = model.predict(X_test)
 
         # evaluate the model's performance
         cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
@@ -336,147 +527,9 @@ def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_
         # F1-scores
         f1_score.append(cr.iloc[2,3])
 
-    return(conf_matrix,precision,accuracy,recall,f1_score)
+        # class_rep.append(cr)
 
-def skf_eval_conf_matrix(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
-    '''
-    Stratified K-Fold Cross-Validitation evaluation function returning the confusion matrices for all splits.
-    '''
-    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-    eval_score = []
-
-    for train_index, test_index in skf.split(X, y):
-        # split X and y
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        
-        # fit the model
-        model.train(X_train,y_train)
-
-        # prediction
-        y_pred = model.pred(X_test)
-
-        # evaluate the model's performance
-        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
-        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-
-        # precision for drafted_flag = 1 predictions
-        eval_score.append(cr.iloc[1,1])
-        
-    return(eval_score)
-
-def skf_eval_precision(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_splits=10, random_state=1):
-    '''
-    Stratified K-Fold Cross-Validitation evaluation function returning the precision values for all splits.
-    '''
-    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-    eval_score = []
-
-    for train_index, test_index in skf.split(X, y):
-        # split X and y
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        
-        # fit the model
-        model.train(X_train,y_train)
-
-        # prediction
-        y_pred = model.pred(X_test)
-
-        # evaluate the model's performance
-        # cm = confusion_matrix(y_pred=predictions, y_true=y_test)
-        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-
-        # precision for drafted_flag = 1 predictions
-        eval_score.append(cr.iloc[1,1])
-        
-    return(eval_score)
-
-def skf_eval_accuracy(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
-    '''
-    Stratified K-Fold Cross-Validitation evaluation function returning the accuracy values for all splits.
-    '''
-    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-    eval_score = []
-
-    for train_index, test_index in skf.split(X, y):
-        # split X and y
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        
-        # fit the model
-        model.train(X_train,y_train)
-
-        # prediction
-        y_pred = model.pred(X_test)
-
-        # evaluate the model's performance
-        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-
-        # accuracy
-        eval_score.append(cr.iloc[2,1])
-
-    return(eval_score)
-
-def skf_eval_recall(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
-    '''
-    Stratified K-Fold Cross-Validitation evaluation function returning the recall values for all splits.
-    '''
-    # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
-    import warnings
-    warnings.filterwarnings('ignore')
-
-    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-    eval_score = []
-
-    for train_index, test_index in skf.split(X, y):
-        # split X and y
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        
-        # fit the model
-        model.train(X_train,y_train)
-
-        # prediction
-        y_pred = model.pred(X_test)
-
-        # evaluate the model's performance
-        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-        
-        # recall
-        eval_score.append(cr.iloc[2,2])
-
-    return(eval_score)
-
-def skf_eval_f1_score(X=[], y=[], model=random_model(), number_of_splits=10, random_state=1):
-    '''
-    Stratified K-Fold Cross-Validitation evaluation function returning the F1-score values for all splits.
-    '''
-    # for the random model it is necessary to ignore cases where the model was unable to predict the target feature
-    import warnings
-    warnings.filterwarnings('ignore')
-
-    skf = StratifiedKFold(n_splits=number_of_splits, shuffle=True, random_state=random_state)
-    eval_score = []
-
-    for train_index, test_index in skf.split(X, y):
-        # split X and y
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        
-        # fit the model
-        model.train(X_train,y_train)
-
-        # prediction
-        y_pred = model.pred(X_test)
-
-        # evaluate the model's performance
-        cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
-        
-        # f1-score
-        eval_score.append(cr.iloc[2,3])
-
-    return(eval_score)
+    return(conf_matrix,precision,accuracy,recall,f1_score,model)
 
 def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors = ['#0194fe', '#d8cabf','#b9d090', '#fb9329']):
     '''
@@ -535,3 +588,51 @@ def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors 
     
     # show plot
     plt.show()
+
+def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().X, y_test=NBA_data().y, model=random_model, number_of_splits=10, random_state=1, param_grid={}, scoring='balanced_accuracy'):
+    '''
+    Grid Search Cross-Validitation function.
+    '''
+    warnings_off()
+
+    conf_matrix = []
+    precision = []
+    accuracy = []
+    recall = []
+    f1_score = []
+   
+    # Grid search cross validation model
+    gs_cv = GridSearchCV(
+        estimator=model,
+        param_grid = param_grid,
+        cv=number_of_splits,
+        scoring=scoring,
+        verbose=2,
+        n_jobs=-1
+        )
+    
+    # fit the model
+    gs_cv.fit(X_train,y_train)
+
+    # prediction
+    y_pred = gs_cv.predict(X_test)
+
+    # confusion matrix
+    conf_matrix.append(confusion_matrix(y_true=y_test,y_pred=y_pred))
+
+    # evaluate the model's performance
+    cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
+
+    # precisions for drafted_flag = 1 predictions
+    precision.append(cr.iloc[1,1])
+
+    # accuracies
+    accuracy.append(accuracy_score(y_pred=y_pred, y_true=y_test))
+
+    # recall values
+    recall.append(cr.iloc[2,2])
+    
+    # F1-scores
+    f1_score.append(cr.iloc[2,3])
+
+    return(conf_matrix,precision,accuracy,recall,f1_score,gs_cv)
