@@ -339,8 +339,8 @@ class logistic_regression:
     '''
     Logistic Regression model class implementation using sklearn's LogisticRegression library.
     '''
-    def __init__(self,penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1,
-                 class_weight=None, random_state=None, solver='lbfgs', max_iter=100, multi_class='auto', verbose=0,
+    def __init__(self, penalty=['l2'], dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1,
+                 class_weight=None, random_state=None, solver=['lbfgs'], max_iter=100, multi_class=['auto'], verbose=0,
                  warm_start=False, n_jobs=None, l1_ratio=None):
         
         self.model = LR(
@@ -372,7 +372,7 @@ class decision_tree:
     '''
     Decision Tree model class implementation using sklearn's DecisionTreeClassifier library.
     '''
-    def __init__(self, criterion='gini', splitter='best', max_depth=None, min_samples_split=2, 
+    def __init__(self, criterion=['gini'], splitter=['best'], max_depth=None, min_samples_split=2, 
                  min_samples_leaf=1, min_weight_fraction_leaf=0.0, max_features=None, random_state=None, 
                  max_leaf_nodes=None, min_impurity_decrease=0.0, class_weight=None, ccp_alpha=0.0):
         
@@ -504,10 +504,10 @@ def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_
         y_train, y_test = y[train_index], y[test_index]
         
         # fit the model
-        model.fit(X_train,y_train)
+        model.fit(X=X_train,y=y_train) # type: ignore
 
         # prediction
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(X=X_test) # type: ignore
 
         # evaluate the model's performance
         cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_test, output_dict=True))
@@ -541,11 +541,11 @@ def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors 
     ax = fig.add_subplot(111)
 
     # Creating axes instance
-    bp = ax.boxplot(eval_data, patch_artist = True, notch ='True', vert = 0)
+    bp = ax.boxplot(eval_data, patch_artist = True, notch =True, vert = False)
 
     # colors for the plots
     for patch, color in zip(bp['boxes'], colors):
-        patch.set_facecolor(color)
+        patch.set_facecolor(color) # type: ignore
 
     # changing color and linewidth of whiskers
     for whisker in bp['whiskers']:
@@ -589,7 +589,7 @@ def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors 
     # show plot
     plt.show()
 
-def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().X, y_test=NBA_data().y, model=random_model, number_of_splits=10, random_state=1, param_grid={}, scoring='balanced_accuracy'):
+def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().X, y_test=NBA_data().y, model=RandomForestClassifier(), number_of_splits=10, random_state=1, param_grid={}, scoring='balanced_accuracy'):
     '''
     Grid Search Cross-Validitation function.
     '''
