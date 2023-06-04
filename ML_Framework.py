@@ -8,10 +8,11 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
-from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay, accuracy_score
+from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay, accuracy_score, balanced_accuracy_score
 from sklearn import preprocessing
 from scipy.stats import bernoulli
 from statistics import mean, stdev
+import seaborn as sns 
 
 # Classes of machine learning models and data loading / preprocessing step applications.
 
@@ -139,9 +140,17 @@ class NBA_data:
         # one hot encode categorical column: yr
         self.df = pd.get_dummies(self.df, columns=['yr'])
 
+        # calculate net efficiency (EFF)
+        self.eff = (self.df.pts + self.df.treb + self.df.ast + self.df.stl + self.df.blk - 
+                    (self.df.twoPA + self.df.TPA - self.df.twoPM - self.df.TPM) - 
+                    (self.df['ast/tov']*(1/self.df.ast))
+                    ) / self.df.GP
+        self.eff.fillna(0,inplace=True)
+        self.df['eff'] = self.eff
+
         # reorder columns to have drafted_flag as the last column of the dataframe
         col_list = self.df.columns.tolist()
-        col_list.pop(-6)  # 'drafted_flag'
+        col_list.pop(-7)  # 'drafted_flag'
         col_list.append('drafted_flag')
         self.df = self.df[col_list]
 
@@ -153,9 +162,20 @@ class NBA_data:
         self.X = self.df.iloc[:, :-1]
         self.y = self.df.drafted_flag
 
-        # apply feature scaling for input features using MinMaxScaler
-        scaler = preprocessing.MinMaxScaler()
-        self.X = scaler.fit_transform(self.X)
+        # separate data by years
+        self.df_09 = self.df[self.df['year'] == 2009].drop(labels='year',axis=1)
+        self.df_10 = self.df[self.df['year'] == 2010].drop(labels='year',axis=1)
+        self.df_11 = self.df[self.df['year'] == 2011].drop(labels='year',axis=1)
+        self.df_12 = self.df[self.df['year'] == 2012].drop(labels='year',axis=1)
+        self.df_13 = self.df[self.df['year'] == 2013].drop(labels='year',axis=1)
+        self.df_14 = self.df[self.df['year'] == 2014].drop(labels='year',axis=1)
+        self.df_15 = self.df[self.df['year'] == 2015].drop(labels='year',axis=1)
+        self.df_16 = self.df[self.df['year'] == 2016].drop(labels='year',axis=1)
+        self.df_17 = self.df[self.df['year'] == 2017].drop(labels='year',axis=1)
+        self.df_18 = self.df[self.df['year'] == 2018].drop(labels='year',axis=1)
+        self.df_19 = self.df[self.df['year'] == 2019].drop(labels='year',axis=1)
+        self.df_20 = self.df[self.df['year'] == 2020].drop(labels='year',axis=1)
+        self.df_21 = self.df[self.df['year'] == 2021].drop(labels='year',axis=1)
 
 class NBA_data_ext:
     '''
@@ -299,7 +319,7 @@ class random_model:
         '''
         Random model class implementation.
         '''
-        def __init__(self,X=NBA_data().X, y=NBA_data().y):
+        def __init__(self,X=NBA_data().X, y=NBA_data().y, random_state=11):
             '''
             Random model instance.
 
@@ -307,6 +327,9 @@ class random_model:
             - data -> for future prediction, 
             the input data's X feature space can be given to the random model manually instead of the X test set.
             '''
+            # random state
+            # random_state = random_state
+
             # empirical distribution of the target feature
             self.X = pd.DataFrame(X)
             self.y = y
@@ -314,8 +337,9 @@ class random_model:
 
             # in case our goal is to predict drafted players:
             if max(self.y) == 1:
-                self.target = self.y[y==1].count()
-                self.bernoulli_dist = bernoulli(self.y).rvs(len(self.X))
+                self.target = sum(self.y)
+                self.probability = self.target/len(self.y)
+                self.bernoulli_dist = bernoulli(self.probability).rvs(len(self.y))
                  
                  # random model with Bernoulli distribution
                 self.y_pred = pd.DataFrame(data=[self.bernoulli_dist])
@@ -335,12 +359,46 @@ class random_model:
         def predict(self,X=None):
             return self.y_pred
 
+class eff_model:
+        '''
+        Efficiency model class implementation.
+        '''
+        def __init__(self,data=NBA_data(),target_var='flag'):
+            '''
+            Efficiency model instance.
+
+            ## Parameters:
+            - data -> for future prediction, 
+            the input data's X feature space can be given to the random model manually instead of the X test set.
+            '''
+            years = data.df['year'].unique()
+            self.y_pred = []
+
+            # in case our goal is to predict drafted players:
+            if target_var == 'flag':
+                for i in years:
+                    self.target = data.df[data.df.year == i]
+                    self.target_drafted_cnt = self.target[self.target.iloc[:,-1]==1].count()[0]
+                    self.target_top_eff = np.argsort(self.target[-2])[::-1][self.target_drafted_cnt]
+                    self.y_pred.append(self.target[self.target['year']==i].count())
+
+            # in case our goal is to predict pick numbers: --> not implemented yet!
+            else:
+                self.target = data.y
+                self.y_pred = np.random.randint(0,61,len(data.y))
+
+        def fit(self,X=None,y=None):
+            return self
+
+        def predict(self,X=None):
+            return self.y_pred
+        
 class logistic_regression:
     '''
     Logistic Regression model class implementation using sklearn's LogisticRegression library.
     '''
-    def __init__(self, penalty=['l2'], dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1,
-                 class_weight=None, random_state=None, solver=['lbfgs'], max_iter=100, multi_class=['auto'], verbose=0,
+    def __init__(self, penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1,
+                 class_weight=None, random_state=None, solver='lbfgs', max_iter=100, multi_class='auto', verbose=0,
                  warm_start=False, n_jobs=None, l1_ratio=None):
         
         self.model = LR(
@@ -372,7 +430,7 @@ class decision_tree:
     '''
     Decision Tree model class implementation using sklearn's DecisionTreeClassifier library.
     '''
-    def __init__(self, criterion=['gini'], splitter=['best'], max_depth=None, min_samples_split=2, 
+    def __init__(self, criterion='gini', splitter='best', max_depth=None, min_samples_split=2, 
                  min_samples_leaf=1, min_weight_fraction_leaf=0.0, max_features=None, random_state=None, 
                  max_leaf_nodes=None, min_impurity_decrease=0.0, class_weight=None, ccp_alpha=0.0):
         
@@ -402,8 +460,8 @@ class random_forest:
     '''
     Random Forest model class implementation using sklearn's RandomForestClassifier library.
     '''
-    def __init__(self, n_estimators=100, criterion=['gini'], splitter='best', max_depth=None, min_samples_split=2, 
-                 min_samples_leaf=1, min_weight_fraction_leaf=0.0, bootstrap=True, oob_score=False, max_features=['sqrt'], 
+    def __init__(self, n_estimators=100, criterion='gini', splitter='best', max_depth=None, min_samples_split=2, 
+                 min_samples_leaf=1, min_weight_fraction_leaf=0.0, bootstrap=True, oob_score=False, max_features='sqrt', 
                  random_state=None, verbose=0, warm_start=False, max_leaf_nodes=None, min_impurity_decrease=0.0, class_weight=None, 
                  ccp_alpha=0.0, max_samples=None):
         
@@ -496,7 +554,7 @@ def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_
     accuracy = []
     recall = []
     f1_score = []
-    # class_rep = []
+    bal_acc = []
 
     for train_index, test_index in skf.split(X, y):
         # split X and y
@@ -527,13 +585,41 @@ def skf_cross_val(X=NBA_data().X, y=NBA_data().y, model=random_model, number_of_
         # F1-scores
         f1_score.append(cr.iloc[2,3])
 
-        # class_rep.append(cr)
+        # balanced accuracies
+        bal_acc.append(balanced_accuracy_score(y_true=y_test,y_pred=y_pred))
 
-    return(conf_matrix,precision,accuracy,recall,f1_score,model)
+    return(conf_matrix,precision,accuracy,recall,f1_score,bal_acc,model)
 
-def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors = ['#0194fe', '#d8cabf','#b9d090', '#fb9329']):
+def eval_scores(y_true=[0], y_pred=[0], random_state=1):
     '''
-    Create and show boxplot for every evaluation score arrays (precision, accuracy, recall and F1-score) 
+    Return evaluation scores.
+    '''
+    # evaluate the model's performance
+    cr = pd.DataFrame(classification_report(y_pred=y_pred, y_true=y_true, output_dict=True))
+
+    # confusion matrices
+    conf_matrix = confusion_matrix(y_true=y_true,y_pred=y_pred)
+    
+    # precisions for drafted_flag = 1 predictions
+    precision = cr.iloc[1,1]
+
+    # accuracies
+    accuracy = cr.iloc[2,1]
+
+    # recall values
+    recall = cr.iloc[2,2]
+    
+    # F1-scores
+    f1_score = cr.iloc[2,3]
+
+    # balanced accuracies
+    bal_acc = balanced_accuracy_score(y_true=y_true,y_pred=y_pred)
+
+    return(conf_matrix,precision,accuracy,recall,f1_score,bal_acc)
+
+def boxplot_eval_scores(eval_data=[0,0,0,0,0],fig_height=10, fig_width=5, colors = ['#0194fe', '#d8cabf','#b9d090', '#fb9329','#ff00ff']):
+    '''
+    Create and show boxplot for every evaluation score arrays (precision, accuracy, recall, F1-score and balanced accuracy) 
     with the given height and width and color palette.
     '''
     # setup the figure
@@ -564,7 +650,7 @@ def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors 
         flier.set(marker ='D', color ='#e7298a', alpha = 0.5)
         
     # x-axis labels
-    ax.set_yticklabels(['Precision', 'Accuracy', 'Recall', 'F1-score'])
+    ax.set_yticklabels(['Precision', 'Accuracy', 'Recall', 'F1-score','Balanced accuracy'])
     # ax.set_xticklabels([np.arange(0, 1, .2)])
 
     # Add title
@@ -589,6 +675,23 @@ def boxplot_eval_scores(eval_data=[0,0,0,0],fig_height=10, fig_width=10, colors 
     # show plot
     plt.show()
 
+def cm_heatmap(cm=confusion_matrix,fig_height=10, fig_width=5, colormap='Blues', annot=True, fmt='d', square=True, xticklabels=['Undrafted (0)', 'Drafted (1)'],  yticklabels=['Undrafted (0)', 'Drafted (1)']):
+    ''' Plot heatmap of confusion matrix. '''
+    plt.figure(figsize = (fig_height,fig_width)) 
+    # sns.set(font_scale=1.4) 
+    ax = sns.heatmap(cm, 
+                    cmap=colormap,
+                    annot=annot, 
+                    fmt=fmt, 
+                    square=square,
+                    xticklabels=xticklabels, 
+                    yticklabels=yticklabels
+                    ) 
+    ax.set(xlabel='Predicted', ylabel='Actual')
+    ax.invert_yaxis()
+    ax.invert_xaxis()
+    return plt.show()
+
 def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().X, y_test=NBA_data().y, model=RandomForestClassifier(), number_of_splits=10, random_state=1, param_grid={}, scoring='balanced_accuracy'):
     '''
     Grid Search Cross-Validitation function.
@@ -600,6 +703,7 @@ def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().
     accuracy = []
     recall = []
     f1_score = []
+    bal_acc = []
    
     # Grid search cross validation model
     gs_cv = GridSearchCV(
@@ -607,7 +711,7 @@ def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().
         param_grid = param_grid,
         cv=number_of_splits,
         scoring=scoring,
-        verbose=2,
+        verbose=3,
         n_jobs=-1
         )
     
@@ -635,4 +739,6 @@ def gridsearch_cv(X_train=NBA_data().X, y_train=NBA_data().y, X_test=NBA_data().
     # F1-scores
     f1_score.append(cr.iloc[2,3])
 
-    return(conf_matrix,precision,accuracy,recall,f1_score,gs_cv)
+    bal_acc.append(balanced_accuracy_score(y_pred=y_pred, y_true=y_test))
+
+    return(conf_matrix,precision,accuracy,recall,f1_score,bal_acc,gs_cv)
